@@ -1,0 +1,23 @@
+name: amd64_linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+    branches:
+      - 'main'
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt install -y meson libgegl-0.4-0 libgegl-dev
+      - run: meson setup --buildtype=release build
+      - run: meson compile -C build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-operation-so-64bit
+          path: build/pixelsort.so
