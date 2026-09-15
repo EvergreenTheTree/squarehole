@@ -17,6 +17,8 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
       - uses: msys2/setup-msys2@v2
         with:
           # Variant of the environment to set by default: MSYS, MINGW32, MINGW64, UCRT64 or CLANG64
@@ -38,4 +40,4 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: windows-operation-dll-64bit
-          path: build/pixelsort.dll
+          path: build/squarehole.dll

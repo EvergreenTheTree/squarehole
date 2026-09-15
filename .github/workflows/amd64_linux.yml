@@ -14,10 +14,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
       - run: sudo apt install -y meson libgegl-0.4-0 libgegl-dev
       - run: meson setup --buildtype=release build
       - run: meson compile -C build
       - uses: actions/upload-artifact@v7
         with:
           name: linux-operation-so-64bit
-          path: build/pixelsort.so
+          path: build/squarehole.so
