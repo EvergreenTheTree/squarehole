@@ -15,6 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#ifndef SQUAREHOLE_AUDIO_H
+#define SQUAREHOLE_AUDIO_H
+
 #include <libavcodec/avcodec.h>
 #include <libswresample/swresample.h>
 #include "glib.h"
@@ -55,3 +58,5 @@ transcoder_encode (AudioTranscoder *transcoder, guint8 *input, gint input_size,
 
 void
 transcoder_reconfigure (AudioTranscoder *transcoder);
+
+#endif /* SQUAREHOLE_AUDIO_H */

@@ -1,0 +1,3 @@
+[submodule "airwin2rack"]
+	path = lib/airwin2rack
+	url = https://github.com/baconpaul/airwin2rack.git

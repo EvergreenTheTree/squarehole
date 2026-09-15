@@ -1,6 +1,7 @@
-project('squarehole', 'c',
+project('squarehole', 'c', 'cpp',
   version : '0.1',
-  license : 'GPL-3.0-or-later')
+  license : 'GPL-3.0-or-later',
+  meson_version : '>=1.10.0')
 
 fs = import('fs')
 
@@ -14,38 +15,43 @@ gegl = dependency('gegl-0.4', required : true)
 libavutil = dependency('libavutil', required: true)
 libavcodec = dependency('libavcodec', required: true)
 libswresample = dependency('libswresample', required: true)
+dependencies = [glib, gegl, libavutil, libavcodec, libswresample]
 
+# Unfortunately you can't just pull in airwin2rack as a meson wrap or a
+# subproject because meson's CMake integration gets a bit to eager and messes
+# up the syntax of CMakeRC generated cpp files. So, the solution is just to
+# include airwin2rack as a git submodule outside of the subprojects directory
+# and manually shell out to CMake as seen below.
 prog_cmake = find_program('cmake')
-airwin2rack_subproject = subproject('airwin2rack')
 airwin2rack_build = custom_target(
   'airwin2rack_build',
+  output : 'airwin2rack',
   command : [
     prog_cmake,
-    '-S@_SOURCE_ROOT@' / 'subprojects' / 'airwin2rack',
-    '-B@BUILD_ROOT@' / 'subprojects' / 'airwin2rack',
+    '-S@SOURCE_ROOT@' / 'lib' / 'airwin2rack',
+    '-B@BUILD_ROOT@' / 'airwin2rack',
   ],
 )
 airwin2rack_target = custom_target(
   'libairwin-registry.a',
   output : 'libairwin-registry.a',
-  build_subdir : 'subprojects' / 'airwin2rack',
-  depepends : airwin2rack_build,
+  build_subdir : 'airwin2rack',
+  depends : airwin2rack_build,
   command : [
     prog_cmake,
-    '--build', '@BUILD_ROOT@' / 'subprojects' / 'airwin2rack',
+    '--build', '@BUILD_ROOT@' / 'airwin2rack',
     '--target', 'airwin-registry',
   ],
 )
 
-dependencies = [glib, gegl, libavutil, libavcodec, libswresample, airwin2rack_target]
-
 src_files = files([
   'src' / 'squarehole.c',
-  'src' / 'audio.c'
+  'src' / 'audio.c',
+  'src' / 'airwin.cpp',
 ])
-inc = include_directories('src')
+inc = include_directories('src', 'lib' / 'airwin2rack' / 'src')
 
-shlib = shared_library('squarehole', src_files,
+shlib = shared_library('squarehole', src_files, airwin2rack_target,
   c_args : lib_args,
   dependencies : dependencies,
   include_directories : inc,
