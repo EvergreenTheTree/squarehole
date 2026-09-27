@@ -63,24 +63,19 @@ squarehole_dep = declare_dependency(
   include_directories: include_directories('.'),
   link_with : shlib)
 
-# Unit tests
-unity_subproject = subproject('unity')
-unity_dependency = unity_subproject.get_variable('unity_dep')
-unity_gen_runner = unity_subproject.get_variable('gen_test_runner')
-
-foreach src_file : src_files
-  test_name = 'test_' + fs.name(src_file)
-  test_file = 'test' / test_name
-  if fs.exists(test_file)
-    test_exec = executable(test_name,
-      sources : [
-        src_file,
-        test_file,
-        unity_gen_runner.process(test_file)
-      ],
-      include_directories : inc,
-      dependencies : [unity_dependency, dependencies],
-    )
-    test(test_name, test_exec)
-  endif
-endforeach
+# Unit Tests
+criterion = dependency('criterion', required : false)
+if criterion.found()
+  foreach src_file : src_files
+    test_name = 'test_' + fs.name(src_file)
+    test_file = 'test' / test_name
+    if fs.exists(test_file)
+      test_exec = executable(fs.stem(test_name),
+        sources : [src_file, test_file],
+        include_directories : inc,
+        dependencies : [dependencies, criterion],
+      )
+      test(test_name, test_exec)
+    endif
+  endforeach
+endif
