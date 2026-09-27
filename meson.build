@@ -34,13 +34,13 @@ airwin2rack_build = custom_target(
 )
 airwin2rack_target = custom_target(
   'libairwin-registry.a',
-  output : 'libairwin-registry.a',
+  output : ['libairwin-registry.a', 'libawdoc_resources.a'],
   build_subdir : 'airwin2rack',
   depends : airwin2rack_build,
   command : [
     prog_cmake,
     '--build', '@BUILD_ROOT@' / 'airwin2rack',
-    '--target', 'airwin-registry',
+    '--target', 'all',
   ],
 )
 
