@@ -46,7 +46,7 @@ airwin2rack_target = custom_target(
 
 src_files = files([
   'src' / 'squarehole.c',
-  'src' / 'audio.c',
+  'src' / 'transcode.c',
   'src' / 'airwin.cpp',
 ])
 inc = include_directories('src', 'lib' / 'airwin2rack' / 'src')

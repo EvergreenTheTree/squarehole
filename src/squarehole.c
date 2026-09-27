@@ -73,7 +73,7 @@ property_boolean (bleed, "Bleed", TRUE)
 #define GEGL_OP_C_SOURCE squarehole.c
 
 #include "gegl-op.h"
-#include "audio.h"
+#include "transcode.h"
 
 typedef struct
 {
@@ -170,14 +170,6 @@ process (GeglOperation       *operation,
     // TODO, this would leave unprocessed pixels since bps < bpp
   }
 
-  guint8 *audio_bytes;
-  AVChannelLayout ch_layout;
-  av_opt_get_chlayout (transcoder->decoder->swr, "out_chlayout", 0, &ch_layout);
-  av_samples_alloc(&audio_bytes, NULL, ch_layout.nb_channels,
-                   length, sample_format, 0);
-  av_channel_layout_uninit (&ch_layout);
-
-
   line_rect.x = result->x;
   line_rect.y = result->y;
 
@@ -186,7 +178,7 @@ process (GeglOperation       *operation,
     {
       gegl_buffer_get (input, &line_rect, 1.0, format, (guint8 *) line_buf,
                        GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
-      transcoder_decode(transcoder, line_buf, length, audio_bytes);
+      // transcoder_decode(transcoder, line_buf, length, audio_bytes);
 
       // TODO: pass audio input buffer through effects pipeline (how to even process a graph like this idk should be fun)
       // TODO: use transcoder_encode
@@ -208,7 +200,6 @@ process (GeglOperation       *operation,
     }
 
   g_free(line_buf);
-  av_freep(&audio_bytes[0]);
 
   return TRUE;
 }
