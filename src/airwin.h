@@ -3,13 +3,13 @@
 
 #ifdef __cplusplus
 #include <AirwinRegistry.h>
-extern "C" {
+extern "C"
+{
 #else
 typedef struct AirwinConsolidatedBase
 #endif
 
-AirwinConsolidatedBase *
-airwin_get_effect(const char *name);
+  AirwinConsolidatedBase *airwin_get_effect (const char *name);
 
 #ifdef __cplusplus
 }

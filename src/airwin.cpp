@@ -1,15 +1,16 @@
 #include <AirwinRegistry.h>
 
 AirwinConsolidatedBase *
-airwin_get_effect(const char *name)
+airwin_get_effect (const char *name)
 {
-  auto effect_index_it = AirwinRegistry::nameToIndex.find(name);
-  if (effect_index_it == AirwinRegistry::nameToIndex.end())
+  auto effect_index_it = AirwinRegistry::nameToIndex.find (name);
+  if (effect_index_it == AirwinRegistry::nameToIndex.end ())
     {
-       return NULL;
+      return NULL;
     }
-  AirwinRegistry::awReg reg_entry = AirwinRegistry::registry[effect_index_it->second];
-  return reg_entry.generator().release();
+  AirwinRegistry::awReg reg_entry
+      = AirwinRegistry::registry[effect_index_it->second];
+  return reg_entry.generator ().release ();
 }
 
 // TODO make C wrappers for all of the necessary AirwinConsolidatedBase methods
