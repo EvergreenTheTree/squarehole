@@ -27,68 +27,132 @@
 #include <libavutil/opt.h>
 #include <libavutil/samplefmt.h>
 #include <libswresample/swresample.h>
-#include <string.h>
 
-AudioTranscoder *
-alloc_transcoder (void)
+Transcoder *
+transcoder_alloc (void)
 {
-  AudioTranscoder *transcoder = g_new (AudioTranscoder, 1);
+  Transcoder *transcoder = g_new (Transcoder, 1);
+  if (transcoder == NULL)
+    return NULL;
+
+  TranscoderContext *encoder = g_new (TranscoderContext, 1);
+  if (encoder == NULL)
+    {
+      g_free (transcoder);
+      return NULL;
+    }
+  transcoder->encoder = encoder;
+  TranscoderContext *decoder = g_new (TranscoderContext, 1);
+  if (decoder == NULL)
+    {
+      g_free (transcoder);
+      g_free (encoder);
+      return NULL;
+    }
+  transcoder->decoder = decoder;
+  transcoder->configured = FALSE;
+  return transcoder;
+}
+
+gint
+transcoder_configure (Transcoder *transcoder, enum AVCodecID raw_codec)
+{
   gint ret;
 
-  AudioTranscoderContext *encoder = g_new (AudioTranscoderContext, 1);
-  if (encoder == NULL)
-    return NULL;
-  transcoder->encoder = encoder;
-  AudioTranscoderContext *decoder = g_new (AudioTranscoderContext, 1);
-  if (decoder == NULL)
-    return NULL;
-  transcoder->decoder = decoder;
+  TranscoderContext *decoder = transcoder->decoder;
+  TranscoderContext *encoder = transcoder->encoder;
 
-  decoder->configured = TRUE;
-  // TODO make this configurable
-  const AVCodec *decoder_codec = avcodec_find_decoder (AV_CODEC_ID_PCM_MULAW);
+  const AVCodec *decoder_codec = avcodec_find_decoder (raw_codec);
   decoder->codec = decoder_codec;
+  if (transcoder->configured)
+    avcodec_free_context (&transcoder->decoder->codec_context);
   decoder->codec_context = avcodec_alloc_context3 (decoder_codec);
   if (decoder->codec_context == NULL)
-    return NULL;
+    return AVERROR (ENOMEM);
   decoder->codec_context->sample_rate = 44100;
   decoder->codec_context->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
   ret = avcodec_open2 (decoder->codec_context, decoder_codec, NULL);
   if (ret < 0)
-    return NULL;
+    {
+      avcodec_free_context (&decoder->codec_context);
+      return ret;
+    }
 
-  encoder->configured = TRUE;
-  // TODO make this configurable
-  const AVCodec *encoder_codec = avcodec_find_encoder (AV_CODEC_ID_PCM_MULAW);
+  const AVCodec *encoder_codec = avcodec_find_encoder (raw_codec);
   encoder->codec = encoder_codec;
+  if (transcoder->configured)
+    avcodec_free_context (&transcoder->encoder->codec_context);
   encoder->codec_context = avcodec_alloc_context3 (encoder_codec);
+
   if (encoder->codec_context == NULL)
-    return NULL;
+    {
+      avcodec_free_context (&decoder->codec_context);
+      return AVERROR (ENOMEM);
+    }
   encoder->codec_context->sample_rate = 44100;
   encoder->codec_context->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
-  encoder->codec_context->sample_fmt = AV_SAMPLE_FMT_S16;
+
+  // Determine the first supported sample format
+  const enum AVSampleFormat *sample_fmts;
+  int num_sample_fmts;
+  ret = avcodec_get_supported_config (
+      NULL, encoder_codec, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
+      (const void **)&sample_fmts, &num_sample_fmts);
+  if (ret < 0 || num_sample_fmts == 0)
+    {
+      avcodec_free_context (&decoder->codec_context);
+      avcodec_free_context (&encoder->codec_context);
+      return ret;
+    }
+
+  encoder->codec_context->sample_fmt = sample_fmts[0];
   ret = avcodec_open2 (encoder->codec_context, encoder_codec, NULL);
   if (ret < 0)
-    return NULL;
+    {
+      avcodec_free_context (&decoder->codec_context);
+      avcodec_free_context (&encoder->codec_context);
+      return ret;
+    }
 
-  decoder->swr = swr_alloc ();
-  if (decoder->swr == NULL)
-    return NULL;
+  if (!transcoder->configured)
+    {
+      decoder->swr = swr_alloc ();
+      if (decoder->swr == NULL)
+        {
+          avcodec_free_context (&decoder->codec_context);
+          avcodec_free_context (&encoder->codec_context);
+          return AVERROR (ENOMEM);
+        }
+    }
   av_opt_set_chlayout (decoder->swr, "in_chlayout",
                        &(AVChannelLayout)AV_CHANNEL_LAYOUT_MONO, 0);
   av_opt_set_chlayout (decoder->swr, "out_chlayout",
                        &(AVChannelLayout)AV_CHANNEL_LAYOUT_MONO, 0);
   av_opt_set_int (decoder->swr, "in_sample_rate", 44100, 0);
   av_opt_set_int (decoder->swr, "out_sample_rate", 44100, 0);
-  av_opt_set_sample_fmt (decoder->swr, "in_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+  av_opt_set_sample_fmt (decoder->swr, "in_sample_fmt",
+                         encoder->codec_context->sample_fmt, 0);
   av_opt_set_sample_fmt (decoder->swr, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
   ret = swr_init (decoder->swr);
   if (ret < 0)
-    return NULL;
+    {
+      avcodec_free_context (&decoder->codec_context);
+      avcodec_free_context (&encoder->codec_context);
+      swr_free (&decoder->swr);
+      return ret;
+    }
 
-  encoder->swr = swr_alloc ();
-  if (encoder->swr == NULL)
-    return NULL;
+  if (!transcoder->configured)
+    {
+      encoder->swr = swr_alloc ();
+      if (encoder->swr == NULL)
+        {
+          avcodec_free_context (&decoder->codec_context);
+          avcodec_free_context (&encoder->codec_context);
+          swr_free (&decoder->swr);
+          return AVERROR (ENOMEM);
+        }
+    }
   av_opt_set_chlayout (encoder->swr, "in_chlayout",
                        &(AVChannelLayout)AV_CHANNEL_LAYOUT_MONO, 0);
   av_opt_set_chlayout (encoder->swr, "out_chlayout",
@@ -96,31 +160,40 @@ alloc_transcoder (void)
   av_opt_set_int (encoder->swr, "in_sample_rate", 44100, 0);
   av_opt_set_int (encoder->swr, "out_sample_rate", 44100, 0);
   av_opt_set_sample_fmt (encoder->swr, "in_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
-  av_opt_set_sample_fmt (encoder->swr, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+  av_opt_set_sample_fmt (encoder->swr, "out_sample_fmt",
+                         encoder->codec_context->sample_fmt, 0);
   ret = swr_init (encoder->swr);
   if (ret < 0)
-    return NULL;
+    {
+      avcodec_free_context (&decoder->codec_context);
+      avcodec_free_context (&encoder->codec_context);
+      swr_free (&decoder->swr);
+      swr_free (&encoder->swr);
+      return ret;
+    }
 
-  return transcoder;
+  transcoder->configured = TRUE;
+  return 0;
 }
 
 void
-free_transcoder (AudioTranscoder *transcoder)
+transcoder_free (Transcoder **transcoder)
 {
-  swr_free (&transcoder->decoder->swr);
-  swr_free (&transcoder->encoder->swr);
-  avcodec_free_context (&transcoder->decoder->codec_context);
-  avcodec_free_context (&transcoder->encoder->codec_context);
-  g_free (transcoder->decoder);
-  g_free (transcoder->encoder);
-  g_free (transcoder);
+  swr_free (&(*transcoder)->decoder->swr);
+  swr_free (&(*transcoder)->encoder->swr);
+  avcodec_free_context (&(*transcoder)->decoder->codec_context);
+  avcodec_free_context (&(*transcoder)->encoder->codec_context);
+  g_free ((*transcoder)->decoder);
+  g_free ((*transcoder)->encoder);
+  g_free (*transcoder);
+  *transcoder = NULL;
 }
 
 gint
-transcoder_decode (AudioTranscoder *transcoder, guint8 *input,
-                   gint input_samples, gfloat *output)
+transcoder_decode (Transcoder *transcoder, guint8 *input, gint input_samples,
+                   gfloat *output)
 {
-  AudioTranscoderContext *decoder = transcoder->decoder;
+  TranscoderContext *decoder = transcoder->decoder;
   guint8 *output_ptr = (guint8 *)output;
 
   enum AVSampleFormat out_sample_format;
@@ -143,12 +216,20 @@ transcoder_decode (AudioTranscoder *transcoder, guint8 *input,
     return AVERROR (ENOMEM);
   gint ret = av_new_packet (decoder->pkt, input_size);
   if (ret < 0)
-    return ret;
+    {
+      av_packet_free (&decoder->pkt);
+      av_channel_layout_uninit (&out_chlayout);
+      return ret;
+    }
   memcpy (decoder->pkt->data, input, input_size);
 
   ret = avcodec_send_packet (decoder->codec_context, decoder->pkt);
   if (ret < 0)
-    return ret;
+    {
+      av_packet_free (&decoder->pkt);
+      av_channel_layout_uninit (&out_chlayout);
+      return ret;
+    }
 
   decoder->frame = av_frame_alloc ();
   AVFrame *frame = decoder->frame;
@@ -174,10 +255,6 @@ transcoder_decode (AudioTranscoder *transcoder, guint8 *input,
       output_ptr += frame->nb_samples * bytes_per_transcoded_sample;
     }
 
-  // Flush decoder. Assumes that no buffering occured in the decoder and there
-  // are no more frames
-  avcodec_send_packet (decoder->codec_context, NULL);
-
   av_frame_free (&decoder->frame);
   av_packet_free (&decoder->pkt);
   av_channel_layout_uninit (&out_chlayout);
@@ -189,10 +266,10 @@ transcoder_decode (AudioTranscoder *transcoder, guint8 *input,
 }
 
 gint
-transcoder_encode (AudioTranscoder *transcoder, gfloat *input,
-                   gint input_samples, guint8 *output)
+transcoder_encode (Transcoder *transcoder, gfloat *input, gint input_samples,
+                   guint8 *output)
 {
-  AudioTranscoderContext *encoder = transcoder->encoder;
+  TranscoderContext *encoder = transcoder->encoder;
   guint8 *output_ptr = output;
 
   enum AVSampleFormat sample_format;
@@ -203,6 +280,8 @@ transcoder_encode (AudioTranscoder *transcoder, gfloat *input,
   AVFrame *frame = av_frame_alloc ();
   if (frame == NULL)
     return AVERROR (ENOMEM);
+      av_packet_free (&decoder->pkt);
+      av_channel_layout_uninit (&out_chlayout);
   encoder->frame = frame;
   frame->format = sample_format;
   frame->nb_samples = input_samples;
@@ -212,11 +291,19 @@ transcoder_encode (AudioTranscoder *transcoder, gfloat *input,
   gint ret = swr_convert (encoder->swr, frame->data, frame->nb_samples,
                           (const guint8 *const *)&input, input_samples);
   if (ret < 0)
-    return ret;
+    {
+      av_frame_free (&encoder->frame);
+      av_channel_layout_uninit (&chlayout);
+      return ret;
+    }
 
   ret = avcodec_send_frame (encoder->codec_context, frame);
   if (ret < 0)
-    return ret;
+    {
+      av_frame_free (&encoder->frame);
+      av_channel_layout_uninit (&chlayout);
+      return ret;
+    }
   encoder->pkt = av_packet_alloc ();
   if (encoder->pkt == NULL)
     {
@@ -235,10 +322,6 @@ transcoder_encode (AudioTranscoder *transcoder, gfloat *input,
       memcpy (output_ptr, encoder->pkt->data, encoder->pkt->size);
       output_ptr += encoder->pkt->size;
     }
-
-  // Flush encoder. Assumes that no buffering occured in the encoder and there
-  // are no more frames
-  avcodec_send_frame (encoder->codec_context, NULL);
 
   av_frame_free (&encoder->frame);
   av_packet_free (&encoder->pkt);

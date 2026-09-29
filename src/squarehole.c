@@ -78,7 +78,7 @@ property_boolean (bleed, "Bleed", TRUE)
 
 typedef struct
 {
-  AudioTranscoder *transcoder;
+  Transcoder *transcoder;
 } State;
 
 static void
@@ -88,7 +88,7 @@ attach (GeglOperation *operation)
   GeglProperties *o = GEGL_PROPERTIES (operation);
   State *state = g_new (State, 1);
   o->user_data = state;
-  state->transcoder = alloc_transcoder ();
+  state->transcoder = transcoder_alloc ();
 }
 
 static void
@@ -144,7 +144,7 @@ process (GeglOperation *operation, GeglBuffer *input, GeglBuffer *output,
   gint num_lines, length, line_num, j;
   GeglRectangle line_rect;
   State *state = (State *)o->user_data;
-  AudioTranscoder *transcoder = state->transcoder;
+  Transcoder *transcoder = state->transcoder;
 
   if (o->direction == GEGL_ORIENTATION_HORIZONTAL)
     {
@@ -205,6 +205,7 @@ process (GeglOperation *operation, GeglBuffer *input, GeglBuffer *output,
     }
 
   g_free (line_buf);
+  line_buf = NULL;
 
   return TRUE;
 }
@@ -260,8 +261,9 @@ dispose (GObject *object)
   if (o != NULL)
     {
       State *user_data = (State *)o->user_data;
-      free_transcoder (user_data->transcoder);
-      g_free (o->user_data);
+      transcoder_free (&user_data->transcoder);
+      g_free (user_data);
+      o->user_data = NULL;
     }
   G_OBJECT_CLASS (gegl_op_parent_class)->dispose (object);
 }

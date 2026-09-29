@@ -18,6 +18,7 @@
 #include "transcode.h"
 #include <criterion/criterion.h>
 #include <criterion/new/assert.h>
+#include <libavcodec/avcodec.h>
 #include <stdio.h>
 
 void
@@ -40,7 +41,12 @@ teardown (void)
 
 Test (transcode, decode_matches_ffmpeg_cli)
 {
-  AudioTranscoder *transcoder = alloc_transcoder ();
+  Transcoder *transcoder = transcoder_alloc ();
+  // test reconfiguring incidentally
+  gint ret = transcoder_configure (transcoder, AV_CODEC_ID_PCM_U8);
+  cr_assert (eq (int, ret, 0));
+  ret = transcoder_configure (transcoder, AV_CODEC_ID_PCM_MULAW);
+  cr_assert (eq (int, ret, 0));
 
   guint8 in_samples[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
   // generated with:
@@ -52,19 +58,35 @@ Test (transcode, decode_matches_ffmpeg_cli)
           0x52, 0xbf, 0x00, 0xf8, 0x4a, 0xbf, 0x00, 0xf8, 0x42, 0xbf };
 
   gfloat out_samples[9] = { 0 };
-  transcoder_decode (transcoder, in_samples, 8, out_samples);
+  ret = transcoder_decode (transcoder, in_samples, 8, out_samples);
+  cr_assert (eq (int, ret, 0));
 
   cr_expect (eq (flt, out_samples[8], 0.0),
              "Buffer should not be overrun by transcoder_decode");
   cr_expect (eq (flt[8], out_samples, (gfloat *)expected_out_samples),
              "transcoder_decode should match ffmpeg CLI");
 
-  free_transcoder (transcoder);
+  // test decoding more than one buffer of samples
+  gfloat out_samples2[9] = { 0 };
+  ret = transcoder_decode (transcoder, in_samples, 8, out_samples2);
+  cr_assert (eq (int, ret, 0));
+
+  cr_expect (eq (flt, out_samples2[8], 0.0),
+             "Buffer should not be overrun by transcoder_decode");
+  cr_expect (eq (flt[8], out_samples2, (gfloat *)expected_out_samples),
+             "transcoder_decode should match ffmpeg CLI");
+
+  transcoder_free (&transcoder);
 }
 
-Test (transcode, encode_works)
+Test (transcode, encode_matches_ffmpeg_cli)
 {
-  AudioTranscoder *transcoder = alloc_transcoder ();
+  Transcoder *transcoder = transcoder_alloc ();
+  // test reconfiguring
+  gint ret = transcoder_configure (transcoder, AV_CODEC_ID_PCM_U8);
+  cr_assert (eq (int, ret, 0));
+  ret = transcoder_configure (transcoder, AV_CODEC_ID_PCM_MULAW);
+  cr_assert (eq (int, ret, 0));
 
   // generated with
   // printf '\x00\x01\x02\x03\x04\x05\x06\x07' |
@@ -76,12 +98,23 @@ Test (transcode, encode_works)
   guint8 out_samples_expected[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
   guint8 out_samples[9] = { 0 };
-  transcoder_encode (transcoder, (gfloat *)in_samples, 8, out_samples);
+  ret = transcoder_encode (transcoder, (gfloat *)in_samples, 8, out_samples);
+  cr_assert (eq (int, ret, 0));
 
   cr_expect (eq (u8, out_samples[8], 0),
              "Buffer should not be overrun by transcoder_encode");
   cr_expect (eq (u8[8], out_samples, out_samples_expected),
              "transcoder_encode should match ffmpeg CLI");
 
-  free_transcoder (transcoder);
+  // test encoding more than one buffer of samples
+  guint8 out_samples2[9] = { 0 };
+  ret = transcoder_encode (transcoder, (gfloat *)in_samples, 8, out_samples2);
+  cr_assert (eq (int, ret, 0));
+
+  cr_expect (eq (u8, out_samples2[8], 0),
+             "Buffer should not be overrun by transcoder_encode");
+  cr_expect (eq (u8[8], out_samples2, out_samples_expected),
+             "transcoder_encode should match ffmpeg CLI");
+
+  transcoder_free (&transcoder);
 }
