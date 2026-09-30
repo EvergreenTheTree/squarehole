@@ -213,7 +213,10 @@ transcoder_decode (Transcoder *transcoder, guint8 *input, gint input_samples,
 
   decoder->pkt = av_packet_alloc ();
   if (decoder->pkt == NULL)
-    return AVERROR (ENOMEM);
+    {
+      av_channel_layout_uninit (&out_chlayout);
+      return AVERROR (ENOMEM);
+    }
   gint ret = av_new_packet (decoder->pkt, input_size);
   if (ret < 0)
     {
@@ -279,9 +282,10 @@ transcoder_encode (Transcoder *transcoder, gfloat *input, gint input_samples,
 
   AVFrame *frame = av_frame_alloc ();
   if (frame == NULL)
-    return AVERROR (ENOMEM);
-      av_packet_free (&decoder->pkt);
-      av_channel_layout_uninit (&out_chlayout);
+    {
+      av_channel_layout_uninit (&chlayout);
+      return AVERROR (ENOMEM);
+    }
   encoder->frame = frame;
   frame->format = sample_format;
   frame->nb_samples = input_samples;

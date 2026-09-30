@@ -23,6 +23,33 @@
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 
+// Uses the age-old X macro trick, redefine X to make use of this list of
+// encodings. The all caps identifier is intended to refer to the suffixes
+// following the AV_CODEC_ID_ macros defined by libavcodec
+#define SUPPORTED_AUDIO_ENCODINGS                                             \
+  X (PCM_ALAW, "pcm_alaw", N_ ("PCM A-law / G.711 A-law"))                    \
+  X (PCM_F32BE, "pcm_f32be", N_ ("PCM 32-bit floating point big-endian"))     \
+  X (PCM_F32LE, "pcm_f32le", N_ ("PCM 32-bit floating point little-endian"))  \
+  X (PCM_F64BE, "pcm_f64be", N_ ("PCM 64-bit floating point big-endian"))     \
+  X (PCM_F64LE, "pcm_f64le", N_ ("PCM 64-bit floating point little-endian"))  \
+  X (PCM_MULAW, "pcm_mulaw", N_ ("PCM mu-law / G.711 mu-law"))                \
+  X (PCM_S8, "pcm_s8", N_ ("PCM signed 8-bit"))                               \
+  X (PCM_S16BE, "pcm_s16be", N_ ("PCM signed 16-bit big-endian"))             \
+  X (PCM_S16LE, "pcm_s16le", N_ ("PCM signed 16-bit little-endian"))          \
+  X (PCM_S24BE, "pcm_s24be", N_ ("PCM signed 24-bit big-endian"))             \
+  X (PCM_S24LE, "pcm_s24le", N_ ("PCM signed 24-bit little-endian"))          \
+  X (PCM_S32BE, "pcm_s32be", N_ ("PCM signed 32-bit big-endian"))             \
+  X (PCM_S32LE, "pcm_s32le", N_ ("PCM signed 32-bit little-endian"))          \
+  X (PCM_S64BE, "pcm_s64be", N_ ("PCM signed 64-bit big-endian"))             \
+  X (PCM_S64LE, "pcm_s64le", N_ ("PCM signed 64-bit little-endian"))          \
+  X (PCM_U8, "pcm_u8", N_ ("PCM unsigned 8-bit"))                             \
+  X (PCM_U16BE, "pcm_u16be", N_ ("PCM unsigned 16-bit big-endian"))           \
+  X (PCM_U16LE, "pcm_u16le", N_ ("PCM unsigned 16-bit little-endian"))        \
+  X (PCM_U24BE, "pcm_u24be", N_ ("PCM unsigned 24-bit big-endian"))           \
+  X (PCM_U24LE, "pcm_u24le", N_ ("PCM unsigned 24-bit little-endian"))        \
+  X (PCM_U32BE, "pcm_u32be", N_ ("PCM unsigned 32-bit big-endian"))           \
+  X (PCM_U32LE, "pcm_u32le", N_ ("PCM unsigned 32-bit little-endian"))
+
 #define TUTORIAL                                                              \
   "# uncomment a set of lines below by removing the\n"                        \
   "# leading to test and modify an example, use\n"                            \
@@ -40,7 +67,7 @@
 // clang-format off
 #ifdef GEGL_PROPERTIES
 
-property_string (pipeline, _("pipeline"), TUTORIAL)
+property_string (pipeline, _("Audio Pipeline"), TUTORIAL)
     description(_("[op [property=value] [property=value]] [[op] [property=value]"))
     ui_meta ("multiline", "true")
 
@@ -48,23 +75,45 @@ property_string (error, _("Eeeeeek"), "")
     description (_("There is a problem in the syntax or in the application of parsed property values. Things might mostly work nevertheless."))
     ui_meta ("error", "true")
 
-property_enum (direction, "Processing direction",
+property_enum (direction, _("Processing direction"),
                GeglOrientation, gegl_orientation,
                GEGL_ORIENTATION_HORIZONTAL)
     description (_("Whether to send image data through the audio pipline row by row or column by column"))
 
-property_boolean (reverse_order, "Reverse line order", FALSE)
+property_boolean (reverse_order, _("Reverse line order"), FALSE)
     description (_("The processing order of rows or columns is normally top to bottom or left to right respectively. This property reverses that when set to true."))
 
-property_boolean (reverse_time, "Reverse time", FALSE)
+property_boolean (reverse_time, _("Reverse time"), FALSE)
     description (_("The processing order within rows and columns is normally left to right or top to bottom respectively. This property reverses that when set to true."))
 
-property_boolean (bleed, "Bleed", TRUE)
+property_boolean (bleed, _("Bleed"), TRUE)
     description (_("When set to false, sends each row or column through the audio pipeline in isolation. Defaults to true, which means processing from one line can affect the next."))
 
-// TODO: Make the pixel format configurable beyond RGB u8
-// TODO: Make the sample rate configurable
-// TODO: Make the audio encoding configurable
+property_int (sample_rate, _("Sample rate"), 44100)
+    description (_("Sample rate to run the audio effects at. Generally affects audio effects that have a time-based component (delay, reverb, etc.)"))
+
+// cursed, see SUPPORTED_AUDIO_ENCODINGS definition
+enum_start (gegl_squarehole_audio_encoding)
+#define X(val, name, desc) enum_value (GEGL_SQUAREHOLE_AUDIO_ENC_ ## val , name, desc)
+SUPPORTED_AUDIO_ENCODINGS
+#undef X
+enum_end (GeglSquareholeAudioEncoding)
+
+property_enum (audio_encoding, _("Audio encoding"),
+              GeglSquareholeAudioEncoding, gegl_squarehole_audio_encoding, GEGL_SQUAREHOLE_AUDIO_ENC_PCM_MULAW)
+              description (_("What sample format / audio encoding to treat the pixel data as. Defaults to mu-law since it is an 8-bit encoding and produces nice results."))
+
+enum_start (gegl_squarehole_pixel_format)
+  enum_value (GEGL_SQUAREHOLE_PX_FMT_RGB_U8, "RGB u8", N_ ("RGB linear as 8-bit unsigned integers"))
+  enum_value (GEGL_SQUAREHOLE_PX_FMT_RGBA_U8, "RGBA u8", N_ ("RGB linear, separate alpha as 8-bit unsigned integers"))
+  enum_value (GEGL_SQUAREHOLE_PX_FMT_RAGABAA_U8, "RaGaBaA u8", N_ ("RGB linear, associated alpha as 8-bit unsigned integers"))
+  enum_value (GEGL_SQUAREHOLE_PX_FMT_CMYK_U8, "CMYK u8", N_ ("CMYK as 8-bit unsigned integers"))
+  enum_value (GEGL_SQUAREHOLE_PX_FMT_CMYKA_U8, "CMYKA u8", N_ ("CMYK, separate alpha as 8-bit unsigned integers"))
+enum_end (GeglSquareholePixelFormat)
+
+property_enum (pixel_format, _("Pixel format"),
+              GeglSquareholePixelFormat, gegl_squarehole_pixel_format, GEGL_SQUAREHOLE_PX_FMT_RGB_U8)
+              description (_("What pixel format to convert image data to before running through the decoder and audio effects. Defaults to RGB u8."))
 
 // clang-format on
 #else
@@ -81,6 +130,31 @@ typedef struct
   Transcoder *transcoder;
 } State;
 
+// cursed, see SUPPORTED_AUDIO_ENCODINGS definition
+enum AVCodecID
+encoding_property_to_codec (GeglSquareholeAudioEncoding encoding)
+{
+  switch (encoding)
+    {
+      // clang-format off
+#define X(val, name, desc) case GEGL_SQUAREHOLE_AUDIO_ENC_ ## val: return AV_CODEC_ID_ ## val;
+SUPPORTED_AUDIO_ENCODINGS
+#undef X
+      // clang-format on
+    }
+}
+
+const gchar *
+pixel_format_property_to_babl_format (GeglSquareholePixelFormat pixel_format)
+{
+  GEnumClass *enum_class
+      = g_type_class_ref (gegl_squarehole_pixel_format_get_type ());
+  GEnumValue *enum_value = g_enum_get_value (enum_class, pixel_format);
+
+  g_type_class_unref (enum_class);
+  return enum_value->value_name;
+}
+
 static void
 attach (GeglOperation *operation)
 {
@@ -96,23 +170,24 @@ prepare (GeglOperation *operation)
 {
   GeglProperties *o = GEGL_PROPERTIES (operation);
   State *state = o->user_data;
-  // TODO: reconfigure ffmpeg encoder and resampler based on selected options
-  // (may require more allocations)
+  transcoder_configure (state->transcoder,
+                        encoding_property_to_codec (o->audio_encoding));
+  const gchar *pixel_format
+      = pixel_format_property_to_babl_format (o->pixel_format);
   // TODO: parse chain DSL, set any error messages and
   // TODO: allocate airwindows things (this will require some kinda wrapper
   // library)
-  // TODO: reset state of decoder / encoder, codec, codec parser
 
 #if GEGL_MAJOR_VERSION >= 4
   const Babl *space = gegl_operation_get_source_space (operation, "input");
 
   gegl_operation_set_format (operation, "input",
-                             babl_format_with_space ("RGB u8", space));
+                             babl_format_with_space (pixel_format, space));
   gegl_operation_set_format (operation, "output",
-                             babl_format_with_space ("RGB u8", space));
+                             babl_format_with_space (pixel_format, space));
 #else
-  gegl_operation_set_format (operation, "input", babl_format ("RGB u8"));
-  gegl_operation_set_format (operation, "output", babl_format ("RGB u8"));
+  gegl_operation_set_format (operation, "input", babl_format (pixel_format));
+  gegl_operation_set_format (operation, "output", babl_format (pixel_format));
 #endif
 }
 
@@ -141,7 +216,7 @@ process (GeglOperation *operation, GeglBuffer *input, GeglBuffer *output,
 {
   GeglProperties *o = GEGL_PROPERTIES (operation);
   const Babl *format = gegl_operation_get_format (operation, "output");
-  gint num_lines, length, line_num, j;
+  gint num_lines, length, line_num;
   GeglRectangle line_rect;
   State *state = (State *)o->user_data;
   Transcoder *transcoder = state->transcoder;
@@ -172,6 +247,7 @@ process (GeglOperation *operation, GeglBuffer *input, GeglBuffer *output,
     {
       // TODO, this would leave unprocessed pixels since bps < bpp
     }
+  gint n_samples = (length * bpp) / bps;
 
   line_rect.x = result->x;
   line_rect.y = result->y;
@@ -181,13 +257,15 @@ process (GeglOperation *operation, GeglBuffer *input, GeglBuffer *output,
     {
       gegl_buffer_get (input, &line_rect, 1.0, format, (guint8 *)line_buf,
                        GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
-      // transcoder_decode(transcoder, line_buf, length, audio_bytes);
+      gfloat *audio_samples = (gfloat *)g_new (gfloat, n_samples);
+      transcoder_decode (transcoder, line_buf, n_samples, audio_samples);
 
       // TODO: pass audio input buffer through effects pipeline (how to even
       // process a graph like this idk should be fun)
-      // TODO: use transcoder_encode
       // TODO: if bleed option is disabled, reset all audio effect state
       // between lines
+
+      transcoder_encode (transcoder, audio_samples, n_samples, line_buf);
 
       // perform operation per image line and store it in place in line_buf
       gegl_buffer_set (output, &line_rect, 0, format, (guint8 *)line_buf,
