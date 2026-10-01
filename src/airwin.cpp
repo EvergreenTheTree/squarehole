@@ -13,8 +13,6 @@ airwin_get_effect (const char *name)
   return reg_entry.generator ().release ();
 }
 
-// TODO still don't know what form airwin2rack effects take f32 samples in 
-//   (planar or not)
 // TODO probably don't need this to be C wrapper, we can save that for the
 //   general audio module which would expose the function to turn the input
 //   to a processing graph which f32 samples can be run through

@@ -142,9 +142,11 @@ SUPPORTED_AUDIO_ENCODINGS
 #undef X
       // clang-format on
     }
+
+  return AV_CODEC_ID_PCM_MULAW;
 }
 
-const gchar *
+gchar *
 pixel_format_property_to_babl_format (GeglSquareholePixelFormat pixel_format)
 {
   GEnumClass *enum_class
@@ -152,28 +154,29 @@ pixel_format_property_to_babl_format (GeglSquareholePixelFormat pixel_format)
   GEnumValue *enum_value = g_enum_get_value (enum_class, pixel_format);
 
   g_type_class_unref (enum_class);
-  return enum_value->value_name;
-}
-
-static void
-attach (GeglOperation *operation)
-{
-  // These allocations only need to happen once
-  GeglProperties *o = GEGL_PROPERTIES (operation);
-  State *state = g_new (State, 1);
-  o->user_data = state;
-  state->transcoder = transcoder_alloc ();
+  gchar *result = g_strdup (enum_value->value_nick);
+  return result;
 }
 
 static void
 prepare (GeglOperation *operation)
 {
   GeglProperties *o = GEGL_PROPERTIES (operation);
-  State *state = o->user_data;
+  State *state;
+  if (o->user_data == NULL)
+    {
+      state = g_new (State, 1);
+      o->user_data = state;
+      state->transcoder = transcoder_alloc ();
+    }
+  else
+    {
+      state = o->user_data;
+    }
+
   transcoder_configure (state->transcoder,
                         encoding_property_to_codec (o->audio_encoding));
-  const gchar *pixel_format
-      = pixel_format_property_to_babl_format (o->pixel_format);
+  gchar *pixel_format = pixel_format_property_to_babl_format (o->pixel_format);
   // TODO: parse chain DSL, set any error messages and
   // TODO: allocate airwindows things (this will require some kinda wrapper
   // library)
@@ -189,6 +192,8 @@ prepare (GeglOperation *operation)
   gegl_operation_set_format (operation, "input", babl_format (pixel_format));
   gegl_operation_set_format (operation, "output", babl_format (pixel_format));
 #endif
+
+  g_free (pixel_format);
 }
 
 static GeglRectangle
@@ -248,6 +253,7 @@ process (GeglOperation *operation, GeglBuffer *input, GeglBuffer *output,
       // TODO, this would leave unprocessed pixels since bps < bpp
     }
   gint n_samples = (length * bpp) / bps;
+  gfloat *audio_samples = (gfloat *)g_new (gfloat, n_samples);
 
   line_rect.x = result->x;
   line_rect.y = result->y;
@@ -257,7 +263,6 @@ process (GeglOperation *operation, GeglBuffer *input, GeglBuffer *output,
     {
       gegl_buffer_get (input, &line_rect, 1.0, format, (guint8 *)line_buf,
                        GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
-      gfloat *audio_samples = (gfloat *)g_new (gfloat, n_samples);
       transcoder_decode (transcoder, line_buf, n_samples, audio_samples);
 
       // TODO: pass audio input buffer through effects pipeline (how to even
@@ -336,7 +341,7 @@ dispose (GObject *object)
 {
   GeglProperties *o = GEGL_PROPERTIES (object);
 
-  if (o != NULL)
+  if (o != NULL && o->user_data != NULL)
     {
       State *user_data = (State *)o->user_data;
       transcoder_free (&user_data->transcoder);
@@ -355,7 +360,6 @@ gegl_op_class_init (GeglOpClass *klass)
   operation_class = GEGL_OPERATION_CLASS (klass);
   filter_class = GEGL_OPERATION_FILTER_CLASS (klass);
 
-  operation_class->attach = attach;
   operation_class->prepare = prepare;
   operation_class->process = operation_process;
   operation_class->get_required_for_output = get_required_for_output;
